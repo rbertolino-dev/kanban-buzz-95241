@@ -264,7 +264,6 @@ Se "confianca" for menor que 70 ou você não tiver certeza da resposta, defina 
     return new Response(
       JSON.stringify({
         error: errorMessage,
-        details: error instanceof Error ? error.stack : undefined,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

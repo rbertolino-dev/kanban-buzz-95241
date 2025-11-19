@@ -656,8 +656,7 @@ serve(async (req) => {
     console.error('💥 Erro no webhook:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
-        stack: error.stack 
+        error: error.message
       }),
       { 
         status: 500,

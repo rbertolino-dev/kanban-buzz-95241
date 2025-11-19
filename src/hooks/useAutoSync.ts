@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { getUserOrganizationId } from '@/lib/organizationUtils';
@@ -15,7 +15,7 @@ export function useAutoSync({ intervalMinutes = 5, enabled = true }: AutoSyncOpt
   const [nextSync, setNextSync] = useState<Date | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const syncMessages = async () => {
+  const syncMessages = useCallback(async () => {
     if (isSyncing) {
       console.log('⏭️ Sincronização já em andamento, pulando...');
       return;
@@ -146,7 +146,7 @@ export function useAutoSync({ intervalMinutes = 5, enabled = true }: AutoSyncOpt
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     if (!enabled) {
@@ -178,7 +178,7 @@ export function useAutoSync({ intervalMinutes = 5, enabled = true }: AutoSyncOpt
         clearInterval(syncIntervalRef.current);
       }
     };
-  }, [enabled, intervalMinutes]);
+  }, [enabled, intervalMinutes, syncMessages]);
 
   const manualSync = async () => {
     await syncMessages();

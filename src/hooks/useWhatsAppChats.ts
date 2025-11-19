@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveOrganization } from "@/hooks/useActiveOrganization";
@@ -18,7 +18,7 @@ export function useWhatsAppChats() {
   const { toast } = useToast();
   const { activeOrgId } = useActiveOrganization();
 
-  const fetchChats = async () => {
+  const fetchChats = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -78,10 +78,12 @@ export function useWhatsAppChats() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeOrgId, toast]);
 
   useEffect(() => {
     fetchChats();
+
+    if (!activeOrgId) return;
 
     // Realtime para atualizar quando novas mensagens chegarem
     const channel = supabase
@@ -113,7 +115,7 @@ export function useWhatsAppChats() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeOrgId]);
+  }, [activeOrgId, fetchChats, toast]);
 
   return {
     chats,

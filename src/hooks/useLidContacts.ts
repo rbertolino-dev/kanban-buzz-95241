@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { getUserOrganizationId } from "@/lib/organizationUtils";
@@ -18,7 +18,7 @@ export function useLidContacts() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchLidContacts = async () => {
+  const fetchLidContacts = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -67,7 +67,7 @@ export function useLidContacts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   const deleteLidContact = async (id: string) => {
     try {
@@ -116,7 +116,7 @@ export function useLidContacts() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchLidContacts]);
 
   return {
     lidContacts,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveOrganization } from "@/hooks/useActiveOrganization";
@@ -19,7 +19,7 @@ export function useWhatsAppMessages(phone: string | null) {
   const { toast } = useToast();
   const { activeOrgId } = useActiveOrganization();
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     if (!phone || !activeOrgId) return;
 
     try {
@@ -69,7 +69,7 @@ export function useWhatsAppMessages(phone: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [phone, activeOrgId, toast]);
 
   useEffect(() => {
     fetchMessages();
@@ -106,7 +106,7 @@ export function useWhatsAppMessages(phone: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [phone, activeOrgId]);
+  }, [phone, activeOrgId, fetchMessages, toast]);
 
   return {
     messages,

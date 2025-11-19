@@ -263,8 +263,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Erro interno ao enviar mensagem',
-        details: error.message,
-        stack: error.stack 
+        details: error.message
       }),
       { 
         status: 500,

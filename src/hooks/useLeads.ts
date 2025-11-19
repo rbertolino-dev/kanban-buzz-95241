@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Lead, LeadStatus, Activity } from "@/types/lead";
 import { useToast } from "@/hooks/use-toast";
@@ -9,52 +9,7 @@ export function useLeads() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchLeads();
-
-    // Realtime: subscribe to changes
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'leads' },
-        (payload) => {
-          console.log('🆕 Novo lead inserido:', payload.new);
-          const newLead = payload.new as any;
-          toast({
-            title: 'Novo contato adicionado!',
-            description: `${newLead.name || newLead.phone} foi adicionado ao funil`,
-          });
-          fetchLeads();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'leads' },
-        (payload) => {
-          console.log('🔄 Lead atualizado (realtime):', payload.new);
-          fetchLeads();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'leads' },
-        () => {
-          console.log('🗑️ Lead excluído (realtime)');
-          fetchLeads();
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Status do canal realtime:', status);
-      });
-
-    return () => {
-      console.log('🔌 Desconectando realtime...');
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchLeads = async () => {
+  const fetchLeads = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -137,7 +92,52 @@ export function useLeads() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchLeads();
+
+    // Realtime: subscribe to changes
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'leads' },
+        (payload) => {
+          console.log('🆕 Novo lead inserido:', payload.new);
+          const newLead = payload.new as any;
+          toast({
+            title: 'Novo contato adicionado!',
+            description: `${newLead.name || newLead.phone} foi adicionado ao funil`,
+          });
+          fetchLeads();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'leads' },
+        (payload) => {
+          console.log('🔄 Lead atualizado (realtime):', payload.new);
+          fetchLeads();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'leads' },
+        () => {
+          console.log('🗑️ Lead excluído (realtime)');
+          fetchLeads();
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Status do canal realtime:', status);
+      });
+
+    return () => {
+      console.log('🔌 Desconectando realtime...');
+      supabase.removeChannel(channel);
+    };
+  }, [fetchLeads, toast]);
 
   const updateLeadStatus = async (leadId: string, newStageId: string) => {
     try {

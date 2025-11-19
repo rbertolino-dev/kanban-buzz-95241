@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface RealtimeStatus {
@@ -14,15 +14,16 @@ export function useRealtimeStatus(): RealtimeStatus {
   const [lastChangeAt, setLastChangeAt] = useState<Date | null>(null);
   const [channelsCount, setChannelsCount] = useState<number>(0);
 
+  const updateChannels = useCallback(() => {
+    try {
+      const count = supabase.realtime.getChannels().length;
+      setChannelsCount(count);
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
-    const updateChannels = () => {
-      try {
-        const count = supabase.realtime.getChannels().length;
-        setChannelsCount(count);
-      } catch (e) {
-        // ignore
-      }
-    };
 
     // Mantém um canal "sonda" para refletir o estado do socket realtime
     const channel = supabase
@@ -53,7 +54,7 @@ export function useRealtimeStatus(): RealtimeStatus {
         // ignore
       }
     };
-  }, []);
+  }, [updateChannels]);
 
   return { connected, lastError, lastChangeAt, channelsCount };
 }

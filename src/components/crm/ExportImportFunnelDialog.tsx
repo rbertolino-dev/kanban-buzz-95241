@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Download, 
   Upload, 
@@ -23,7 +24,10 @@ import {
   Users,
   Tag,
   Activity,
-  Layers
+  Layers,
+  Package,
+  FileText,
+  Link2
 } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { format as formatDate } from "date-fns";
@@ -107,6 +111,8 @@ interface ExportData {
     totalStages: number;
     totalProducts: number;
     totalActivities: number;
+    totalLeadTags: number;
+    totalLeadProducts: number;
   };
 }
 
@@ -126,6 +132,8 @@ interface ImportResult {
   errors: string[];
 }
 
+const BATCH_SIZE = 50;
+
 export function ExportImportFunnelDialog({
   open,
   onOpenChange,
@@ -134,11 +142,14 @@ export function ExportImportFunnelDialog({
 }: ExportImportFunnelDialogProps) {
   const [activeTab, setActiveTab] = useState<"export" | "import">("export");
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatus, setExportStatus] = useState("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importData, setImportData] = useState<ExportData | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [exportSummary, setExportSummary] = useState<ExportData["summary"] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { activeOrgId } = useActiveOrganization();
@@ -156,45 +167,97 @@ export function ExportImportFunnelDialog({
     }
 
     setExporting(true);
+    setExportProgress(0);
+    setExportStatus("Iniciando exportação...");
+    setExportSummary(null);
 
     try {
-      // Buscar nome da organização
+      // 1. Buscar nome da organização
+      setExportStatus("Buscando informações da organização...");
+      setExportProgress(5);
       const { data: orgData } = await supabase
         .from('organizations')
         .select('name')
         .eq('id', activeOrgId)
         .single();
 
-      // Buscar todas as atividades dos leads
-      const leadIds = leads.map(l => l.id);
-      const { data: activitiesData } = await supabase
-        .from('activities')
-        .select('*')
-        .in('lead_id', leadIds);
-
-      // Buscar todos os produtos da organização
+      // 2. Buscar todos os produtos da organização
+      setExportStatus("Exportando produtos...");
+      setExportProgress(10);
       const { data: productsData } = await supabase
         .from('products')
         .select('*')
         .eq('organization_id', activeOrgId);
 
-      // Buscar produtos vinculados aos leads
-      const { data: leadProductsData } = await supabase
-        .from('lead_products')
-        .select('*, products(name)')
-        .in('lead_id', leadIds);
+      // 3. Get lead IDs from the passed leads
+      const leadIds = leads.map(l => l.id);
+      const totalLeads = leadIds.length;
+      
+      // 4. Fetch activities in batches
+      setExportStatus("Exportando atividades...");
+      let allActivities: any[] = [];
+      if (leadIds.length > 0) {
+        const activityBatches = Math.ceil(leadIds.length / BATCH_SIZE);
+        for (let batch = 0; batch < activityBatches; batch++) {
+          const batchIds = leadIds.slice(batch * BATCH_SIZE, (batch + 1) * BATCH_SIZE);
+          setExportStatus(`Exportando atividades... (lote ${batch + 1}/${activityBatches})`);
+          setExportProgress(15 + ((batch + 1) / activityBatches) * 25);
+          
+          const { data: batchActivities } = await supabase
+            .from('activities')
+            .select('*')
+            .in('lead_id', batchIds);
+          
+          if (batchActivities) allActivities = [...allActivities, ...batchActivities];
+        }
+      }
 
-      // Buscar tags dos leads
-      const { data: leadTagsData } = await supabase
-        .from('lead_tags')
-        .select('lead_id, tags(name)')
-        .in('lead_id', leadIds);
+      // 5. Fetch lead products in batches
+      setExportStatus("Exportando produtos vinculados...");
+      let allLeadProducts: any[] = [];
+      if (leadIds.length > 0) {
+        const productBatches = Math.ceil(leadIds.length / BATCH_SIZE);
+        for (let batch = 0; batch < productBatches; batch++) {
+          const batchIds = leadIds.slice(batch * BATCH_SIZE, (batch + 1) * BATCH_SIZE);
+          setExportStatus(`Exportando produtos de leads... (lote ${batch + 1}/${productBatches})`);
+          setExportProgress(40 + ((batch + 1) / productBatches) * 20);
+          
+          const { data: batchProducts } = await supabase
+            .from('lead_products')
+            .select('*, products(name)')
+            .in('lead_id', batchIds);
+          
+          if (batchProducts) allLeadProducts = [...allLeadProducts, ...batchProducts];
+        }
+      }
+
+      // 6. Fetch lead tags in batches
+      setExportStatus("Exportando tags de leads...");
+      let allLeadTags: any[] = [];
+      if (leadIds.length > 0) {
+        const tagBatches = Math.ceil(leadIds.length / BATCH_SIZE);
+        for (let batch = 0; batch < tagBatches; batch++) {
+          const batchIds = leadIds.slice(batch * BATCH_SIZE, (batch + 1) * BATCH_SIZE);
+          setExportStatus(`Exportando tags de leads... (lote ${batch + 1}/${tagBatches})`);
+          setExportProgress(60 + ((batch + 1) / tagBatches) * 20);
+          
+          const { data: batchTags } = await supabase
+            .from('lead_tags')
+            .select('lead_id, tags(name)')
+            .in('lead_id', batchIds);
+          
+          if (batchTags) allLeadTags = [...allLeadTags, ...batchTags];
+        }
+      }
+
+      setExportStatus("Processando dados...");
+      setExportProgress(85);
 
       // Criar mapa de stage_id para nome
       const stageMap = new Map(stages.map(s => [s.id, s.name]));
 
       // Criar mapa de atividades por lead
-      const activitiesByLead = (activitiesData || []).reduce((acc, act) => {
+      const activitiesByLead = allActivities.reduce((acc, act) => {
         if (!acc[act.lead_id]) acc[act.lead_id] = [];
         acc[act.lead_id].push({
           type: act.type,
@@ -207,7 +270,7 @@ export function ExportImportFunnelDialog({
       }, {} as Record<string, any[]>);
 
       // Criar mapa de produtos por lead
-      const productsByLead = (leadProductsData || []).reduce((acc, lp) => {
+      const productsByLead = allLeadProducts.reduce((acc, lp) => {
         if (!acc[lp.lead_id]) acc[lp.lead_id] = [];
         acc[lp.lead_id].push({
           product_name: lp.products?.name || 'Produto desconhecido',
@@ -221,11 +284,23 @@ export function ExportImportFunnelDialog({
       }, {} as Record<string, any[]>);
 
       // Criar mapa de tags por lead
-      const tagsByLead = (leadTagsData || []).reduce((acc, lt: any) => {
+      const tagsByLead = allLeadTags.reduce((acc, lt: any) => {
         if (!acc[lt.lead_id]) acc[lt.lead_id] = [];
         if (lt.tags?.name) acc[lt.lead_id].push(lt.tags.name);
         return acc;
       }, {} as Record<string, string[]>);
+
+      const summary = {
+        totalLeads: leads.length,
+        totalTags: tags.length,
+        totalStages: stages.length,
+        totalProducts: (productsData || []).length,
+        totalActivities: allActivities.length,
+        totalLeadTags: allLeadTags.length,
+        totalLeadProducts: allLeadProducts.length,
+      };
+
+      setExportSummary(summary);
 
       // Montar dados de exportação
       const exportData: ExportData = {
@@ -275,16 +350,13 @@ export function ExportImportFunnelDialog({
           sku: p.sku,
           is_active: p.is_active,
         })),
-        summary: {
-          totalLeads: leads.length,
-          totalTags: tags.length,
-          totalStages: stages.length,
-          totalProducts: (productsData || []).length,
-          totalActivities: (activitiesData || []).length,
-        },
+        summary,
       };
 
       // Criar e baixar arquivo
+      setExportStatus("Gerando arquivo...");
+      setExportProgress(95);
+      
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
         type: "application/json",
       });
@@ -297,12 +369,13 @@ export function ExportImportFunnelDialog({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
+      setExportProgress(100);
+      setExportStatus("Exportação concluída!");
+
       toast({
         title: "Exportação concluída",
         description: `${leads.length} leads exportados com sucesso`,
       });
-
-      onOpenChange(false);
     } catch (error: any) {
       console.error('Erro ao exportar:', error);
       toast({
@@ -310,6 +383,7 @@ export function ExportImportFunnelDialog({
         description: error.message,
         variant: "destructive",
       });
+      setExportStatus("Erro na exportação");
     } finally {
       setExporting(false);
     }
@@ -629,17 +703,151 @@ export function ExportImportFunnelDialog({
                 </div>
                 <div className="flex items-center gap-2">
                   <Activity className="h-4 w-4 text-primary" />
-                  <span>Todas as atividades</span>
+                  <span>Atividades de cada lead</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-primary" />
+                  <span>Produtos vinculados</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-primary" />
+                  <span>Associações lead-tag</span>
                 </div>
               </div>
             </div>
 
+            {/* Lista detalhada dos campos exportados */}
+            <div className="border rounded-lg">
+              <div className="p-3 border-b bg-muted/30">
+                <h4 className="font-medium flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Descrição completa dos dados exportados
+                </h4>
+              </div>
+              <ScrollArea className="h-48">
+                <div className="p-3 space-y-4 text-sm">
+                  <div>
+                    <h5 className="font-medium text-primary flex items-center gap-2 mb-1">
+                      <Layers className="h-3.5 w-3.5" /> Etapas do Funil (pipeline_stages)
+                    </h5>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-2">
+                      <li>Nome da etapa</li>
+                      <li>Cor da etapa</li>
+                      <li>Posição/ordem</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium text-primary flex items-center gap-2 mb-1">
+                      <Tag className="h-3.5 w-3.5" /> Tags/Etiquetas
+                    </h5>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-2">
+                      <li>Nome da tag</li>
+                      <li>Cor da tag</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium text-primary flex items-center gap-2 mb-1">
+                      <Package className="h-3.5 w-3.5" /> Produtos
+                    </h5>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-2">
+                      <li>Nome do produto</li>
+                      <li>Descrição</li>
+                      <li>Preço</li>
+                      <li>Categoria</li>
+                      <li>SKU</li>
+                      <li>Status (ativo/inativo)</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium text-primary flex items-center gap-2 mb-1">
+                      <Users className="h-3.5 w-3.5" /> Leads
+                    </h5>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-2">
+                      <li>Nome</li>
+                      <li>Telefone</li>
+                      <li>E-mail</li>
+                      <li>Empresa</li>
+                      <li>Valor</li>
+                      <li>Status</li>
+                      <li>Origem/Source</li>
+                      <li>Responsável (assigned_to)</li>
+                      <li>Notas/Observações</li>
+                      <li>Etapa do funil (stage_name)</li>
+                      <li>Data de retorno</li>
+                      <li>Instância de origem (WhatsApp)</li>
+                      <li>Data de criação</li>
+                      <li>Último contato</li>
+                      <li>Tags associadas</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium text-primary flex items-center gap-2 mb-1">
+                      <Activity className="h-3.5 w-3.5" /> Atividades (por lead)
+                    </h5>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-2">
+                      <li>Tipo da atividade (ligação, mensagem, nota, etc)</li>
+                      <li>Conteúdo/Descrição</li>
+                      <li>Nome do usuário que criou</li>
+                      <li>Direção (entrada/saída)</li>
+                      <li>Data de criação</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium text-primary flex items-center gap-2 mb-1">
+                      <Link2 className="h-3.5 w-3.5" /> Produtos do Lead (lead_products)
+                    </h5>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-2">
+                      <li>Nome do produto</li>
+                      <li>Quantidade</li>
+                      <li>Preço unitário</li>
+                      <li>Desconto</li>
+                      <li>Preço total</li>
+                      <li>Notas</li>
+                    </ul>
+                  </div>
+                </div>
+              </ScrollArea>
+            </div>
+
+            {exporting && (
+              <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{exportStatus}</span>
+                </div>
+                <Progress value={exportProgress} className="h-2" />
+                <p className="text-xs text-muted-foreground text-center">
+                  {Math.round(exportProgress)}% concluído
+                </p>
+              </div>
+            )}
+
+            {exportSummary && !exporting && (
+              <Alert className="bg-green-500/10 border-green-500/30">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="font-medium text-green-700 dark:text-green-400">Exportação concluída com sucesso!</p>
+                    <div className="grid grid-cols-3 gap-2 text-xs mt-2">
+                      <span>Leads: <strong>{exportSummary.totalLeads}</strong></span>
+                      <span>Etapas: <strong>{exportSummary.totalStages}</strong></span>
+                      <span>Tags: <strong>{exportSummary.totalTags}</strong></span>
+                      <span>Produtos: <strong>{exportSummary.totalProducts}</strong></span>
+                      <span>Atividades: <strong>{exportSummary.totalActivities}</strong></span>
+                      <span>Tags de leads: <strong>{exportSummary.totalLeadTags}</strong></span>
+                      <span>Produtos de leads: <strong>{exportSummary.totalLeadProducts}</strong></span>
+                    </div>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Alert>
               <FileJson className="h-4 w-4" />
               <AlertDescription>
+                A exportação é processada em lotes de {BATCH_SIZE} registros para evitar timeout.
                 O arquivo JSON exportado contém todos os dados necessários para recriar 
-                o funil em outro ambiente, incluindo leads, etapas, etiquetas, atividades 
-                e produtos vinculados.
+                o funil em outro ambiente com 100% de fidelidade.
               </AlertDescription>
             </Alert>
 

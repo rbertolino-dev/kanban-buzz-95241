@@ -6,12 +6,13 @@ import { KanbanColumn } from "./KanbanColumn";
 import { BulkImportPanel } from "./BulkImportPanel";
 import { KanbanSettings } from "./KanbanSettings";
 import { SalesReportDialog } from "./SalesReportDialog";
+import { ExportImportFunnelDialog } from "./ExportImportFunnelDialog";
 import { FollowUpTemplateManager } from "./FollowUpTemplateManager";
 import { DndContext, DragEndEvent, DragOverlay, closestCorners, DragOverEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useEvolutionConfigs } from "@/hooks/useEvolutionConfigs";
 import { useKanbanSettings } from "@/hooks/useKanbanSettings";
-import { Loader2, Upload, ChevronLeft, ChevronRight, ArrowRight, Phone, Trash2, X, ArrowDownUp, Maximize2, Minimize2, BarChart3, Send, List, Tag } from "lucide-react";
+import { Loader2, Upload, ChevronLeft, ChevronRight, ArrowRight, Phone, Trash2, X, ArrowDownUp, Maximize2, Minimize2, BarChart3, Send, List, Tag, Database } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useWorkflowLists } from "@/hooks/useWorkflowLists";
 import { normalizePhone } from "@/lib/phoneUtils";
@@ -50,6 +51,7 @@ export function KanbanBoard({ leads, onLeadUpdate, searchQuery = "", onRefetch, 
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [leadsInCallQueue, setLeadsInCallQueue] = useState<Set<string>>(new Set());
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [exportImportOpen, setExportImportOpen] = useState(false);
   const { stages, loading: stagesLoading } = usePipelineStages();
   const { configs } = useEvolutionConfigs();
   const { columnWidth, updateColumnWidth } = useKanbanSettings();
@@ -627,6 +629,17 @@ export function KanbanBoard({ leads, onLeadUpdate, searchQuery = "", onRefetch, 
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setExportImportOpen(true)}
+            className="gap-2 text-xs sm:text-sm"
+          >
+            <Database className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Exportar/Importar</span>
+            <span className="sm:hidden">Export</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setReportsOpen(true)}
             className="gap-2 text-xs sm:text-sm"
           >
@@ -656,6 +669,13 @@ export function KanbanBoard({ leads, onLeadUpdate, searchQuery = "", onRefetch, 
         leads={leads}
         stages={stages}
         callQueue={callQueue}
+      />
+
+      <ExportImportFunnelDialog
+        open={exportImportOpen}
+        onOpenChange={setExportImportOpen}
+        leads={leads}
+        onRefetch={onRefetch}
       />
 
       <DndContext 

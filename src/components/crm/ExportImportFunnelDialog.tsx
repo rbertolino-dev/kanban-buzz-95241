@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { 
   Download, 
   Upload, 
@@ -27,8 +28,10 @@ import {
   Layers,
   Package,
   FileText,
-  Link2
+  Link2,
+  FileSpreadsheet
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Lead } from "@/types/lead";
 import { format as formatDate } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -141,6 +144,7 @@ export function ExportImportFunnelDialog({
   onRefetch,
 }: ExportImportFunnelDialogProps) {
   const [activeTab, setActiveTab] = useState<"export" | "import">("export");
+  const [exportFormat, setExportFormat] = useState<"json" | "xlsx">("json");
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStatus, setExportStatus] = useState("");
@@ -357,24 +361,124 @@ export function ExportImportFunnelDialog({
       setExportStatus("Gerando arquivo...");
       setExportProgress(95);
       
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `funil-completo-${formatDate(new Date(), "yyyy-MM-dd-HHmm", { locale: ptBR })}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const timestamp = formatDate(new Date(), "yyyy-MM-dd-HHmm", { locale: ptBR });
+      
+      if (exportFormat === "xlsx") {
+        // Criar workbook com múltiplas abas
+        const workbook = XLSX.utils.book_new();
+        
+        // Aba 1: Leads
+        const leadsData = exportData.leads.map(lead => ({
+          Nome: lead.name,
+          Telefone: lead.phone,
+          Email: lead.email || "",
+          Empresa: lead.company || "",
+          Valor: lead.value || 0,
+          Status: lead.status,
+          Origem: lead.source || "",
+          Responsável: lead.assigned_to || "",
+          Notas: lead.notes || "",
+          "Etapa do Funil": lead.stage_name || "",
+          "Data de Retorno": lead.return_date || "",
+          "Instância WhatsApp": lead.source_instance_name || "",
+          "Data de Criação": lead.created_at,
+          "Último Contato": lead.last_contact || "",
+          Tags: lead.tags.join(", "),
+          "Qtd. Atividades": lead.activities.length,
+          "Qtd. Produtos": lead.products.length,
+        }));
+        const leadsSheet = XLSX.utils.json_to_sheet(leadsData);
+        XLSX.utils.book_append_sheet(workbook, leadsSheet, "Leads");
+        
+        // Aba 2: Atividades
+        const activitiesData = exportData.leads.flatMap(lead => 
+          lead.activities.map(act => ({
+            "Lead": lead.name,
+            "Telefone Lead": lead.phone,
+            "Tipo": act.type,
+            "Conteúdo": act.content,
+            "Usuário": act.user_name || "",
+            "Direção": act.direction || "",
+            "Data": act.created_at,
+          }))
+        );
+        if (activitiesData.length > 0) {
+          const activitiesSheet = XLSX.utils.json_to_sheet(activitiesData);
+          XLSX.utils.book_append_sheet(workbook, activitiesSheet, "Atividades");
+        }
+        
+        // Aba 3: Produtos de Leads
+        const leadProductsData = exportData.leads.flatMap(lead => 
+          lead.products.map(prod => ({
+            "Lead": lead.name,
+            "Telefone Lead": lead.phone,
+            "Produto": prod.product_name,
+            "Quantidade": prod.quantity,
+            "Preço Unitário": prod.unit_price,
+            "Desconto": prod.discount || 0,
+            "Preço Total": prod.total_price,
+            "Notas": prod.notes || "",
+          }))
+        );
+        if (leadProductsData.length > 0) {
+          const leadProductsSheet = XLSX.utils.json_to_sheet(leadProductsData);
+          XLSX.utils.book_append_sheet(workbook, leadProductsSheet, "Produtos de Leads");
+        }
+        
+        // Aba 4: Etapas do Funil
+        const stagesData = exportData.pipelineStages.map(stage => ({
+          Nome: stage.name,
+          Cor: stage.color,
+          Posição: stage.position,
+        }));
+        const stagesSheet = XLSX.utils.json_to_sheet(stagesData);
+        XLSX.utils.book_append_sheet(workbook, stagesSheet, "Etapas");
+        
+        // Aba 5: Tags
+        const tagsData = exportData.tags.map(tag => ({
+          Nome: tag.name,
+          Cor: tag.color,
+        }));
+        const tagsSheet = XLSX.utils.json_to_sheet(tagsData);
+        XLSX.utils.book_append_sheet(workbook, tagsSheet, "Tags");
+        
+        // Aba 6: Produtos
+        const productsData = exportData.products.map(prod => ({
+          Nome: prod.name,
+          Descrição: prod.description || "",
+          Preço: prod.price,
+          Categoria: prod.category || "",
+          SKU: prod.sku || "",
+          Ativo: prod.is_active ? "Sim" : "Não",
+        }));
+        if (productsData.length > 0) {
+          const productsSheet = XLSX.utils.json_to_sheet(productsData);
+          XLSX.utils.book_append_sheet(workbook, productsSheet, "Produtos");
+        }
+        
+        // Gerar e baixar arquivo
+        XLSX.writeFile(workbook, `funil-completo-${timestamp}.xlsx`);
+      } else {
+        // JSON export
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `funil-completo-${timestamp}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
 
       setExportProgress(100);
       setExportStatus("Exportação concluída!");
 
       toast({
         title: "Exportação concluída",
-        description: `${leads.length} leads exportados com sucesso`,
+        description: `${leads.length} leads exportados em ${exportFormat.toUpperCase()}`,
       });
     } catch (error: any) {
       console.error('Erro ao exportar:', error);
@@ -716,6 +820,36 @@ export function ExportImportFunnelDialog({
               </div>
             </div>
 
+            {/* Seletor de formato */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <Label className="font-medium">Formato de exportação</Label>
+              <RadioGroup
+                value={exportFormat}
+                onValueChange={(v) => setExportFormat(v as "json" | "xlsx")}
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="json" id="format-json" />
+                  <Label htmlFor="format-json" className="flex items-center gap-2 cursor-pointer">
+                    <FileJson className="h-4 w-4" />
+                    JSON (para reimportação)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="xlsx" id="format-xlsx" />
+                  <Label htmlFor="format-xlsx" className="flex items-center gap-2 cursor-pointer">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Excel (XLSX)
+                  </Label>
+                </div>
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground">
+                {exportFormat === "json" 
+                  ? "JSON permite reimportar os dados em outro ambiente com 100% de fidelidade."
+                  : "XLSX é ideal para visualização e análise em planilhas. Inclui várias abas com todos os dados."}
+              </p>
+            </div>
+
             {/* Lista detalhada dos campos exportados */}
             <div className="border rounded-lg">
               <div className="p-3 border-b bg-muted/30">
@@ -864,7 +998,7 @@ export function ExportImportFunnelDialog({
                 ) : (
                   <>
                     <Download className="h-4 w-4 mr-2" />
-                    Exportar JSON
+                    Exportar {exportFormat.toUpperCase()}
                   </>
                 )}
               </Button>

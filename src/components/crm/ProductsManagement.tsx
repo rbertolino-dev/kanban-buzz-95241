@@ -30,13 +30,19 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useProducts } from "@/hooks/useProducts";
+import { useActiveOrganization } from "@/hooks/useActiveOrganization";
 import { Product, ProductFormData } from "@/types/product";
-import { Plus, Edit, Trash2, Package, Search } from "lucide-react";
+import { Plus, Edit, Trash2, Package, Search, ImagePlus, X } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { compressImage, validateImageFile } from "@/lib/imageCompression";
+
+const PRODUCT_IMAGES_BUCKET = "whatsapp-workflow-media";
 
 export function ProductsManagement() {
+  const { activeOrgId } = useActiveOrganization();
   const {
     products,
     loading,
@@ -50,6 +56,7 @@ export function ProductsManagement() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [formData, setFormData] = useState<ProductFormData>({
     name: "",
@@ -84,6 +91,7 @@ export function ProductsManagement() {
         is_active: product.is_active,
         commission_percentage: product.commission_percentage || 0,
         commission_fixed: product.commission_fixed || 0,
+        image_url: product.image_url ?? undefined,
       });
     } else {
       setEditingProduct(null);
@@ -95,6 +103,7 @@ export function ProductsManagement() {
         is_active: true,
         commission_percentage: 0,
         commission_fixed: 0,
+        image_url: undefined,
       });
     }
     setDialogOpen(true);
@@ -109,7 +118,45 @@ export function ProductsManagement() {
       price: 0,
       category: "",
       is_active: true,
+      image_url: undefined,
     });
+  };
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeOrgId) return;
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      toast({ title: "Imagem inválida", description: validation.error, variant: "destructive" });
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const toUpload = await compressImage(file);
+      const ext = toUpload.name.split(".").pop() || "webp";
+      const path = `${activeOrgId}/products/${crypto.randomUUID()}-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PRODUCT_IMAGES_BUCKET)
+        .upload(path, toUpload, { upsert: false, cacheControl: "86400" });
+      if (uploadError) throw uploadError;
+      const { data: publicUrlData } = supabase.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(path);
+      setFormData((prev) => ({ ...prev, image_url: publicUrlData.publicUrl }));
+      toast({ title: "Imagem adicionada", description: "A imagem será exibida na landing page." });
+    } catch (err: unknown) {
+      console.error("Erro ao enviar imagem:", err);
+      toast({
+        title: "Erro no upload",
+        description: err instanceof Error ? err.message : "Falha ao enviar a imagem.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setFormData((prev) => ({ ...prev, image_url: undefined }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -226,6 +273,49 @@ export function ProductsManagement() {
                   placeholder="Descreva o produto ou serviço..."
                   rows={3}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Imagem (exibida na landing page)</Label>
+                {formData.image_url ? (
+                  <div className="relative inline-block">
+                    <img
+                      src={formData.image_url}
+                      alt="Preview do produto"
+                      className="h-32 w-32 rounded-lg object-cover border"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                      onClick={handleRemoveImage}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Input
+                      id="product-image"
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleImageSelect}
+                      disabled={uploadingImage}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={uploadingImage}
+                      onClick={() => document.getElementById("product-image")?.click()}
+                    >
+                      <ImagePlus className="h-4 w-4 mr-2" />
+                      {uploadingImage ? "Enviando..." : "Adicionar imagem"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">JPG, PNG ou WEBP (máx. 16MB)</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

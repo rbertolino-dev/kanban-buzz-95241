@@ -35,8 +35,6 @@ import ReconnectInstance from "./pages/ReconnectInstance";
 import NotFound from "./pages/NotFound";
 import Cadastro from "./pages/Cadastro";
 import Onboarding from "./pages/Onboarding";
-import LandingPage from "./pages/LandingPage";
-import LandingPageAdmin from "./pages/LandingPageAdmin";
 
 const queryClient = new QueryClient();
 
@@ -84,10 +82,6 @@ const App = () => (
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/reconnect/:notificationId" element={<ReconnectInstance />} />
           <Route path="/reconnect-instance/:instanceId" element={<ReconnectInstance />} />
-          {/* Admin: /landing-page (sem slug) — configuração e link da landing; evita uso de Clock */}
-          <Route path="/landing-page" element={<LandingPageAdmin />} />
-          {/* Pública: /landing-page/:slug — vitrine de produtos/serviços da organização */}
-          <Route path="/landing-page/:slug" element={<LandingPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
